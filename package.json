@@ -1,0 +1,22 @@
+{
+  "name": "bot-whatsapp-baileys",
+  "version": "1.0.0",
+  "description": "Bot de WhatsApp migrado a Baileys (reemplazo de whatsapp-web.js)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --check index.js && node test-smoke.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.24",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
