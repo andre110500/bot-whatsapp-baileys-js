@@ -4,7 +4,7 @@ Migración del bot de `whatsapp-web.js` a **Baileys** (`@whiskeysockets/baileys`
 
 ## Requisitos
 
-- **Node.js >= 20** (Baileys 6.7.24 bloquea la instalación en Node 18). En esta máquina de desarrollo ya está instalado **Node v20.20.2**; en el servidor instalar Node 20 LTS.
+- **Node.js >= 20** (Baileys 6.7.24 bloquea la instalación en Node 18). El proyecto instala **Node v20.20.2 a nivel proyecto** en `node_modules/.bin` (devDependency `node-win-x64`), así que `npm start`/`npm test` usan ese Node local sin tocar la versión global. En el servidor instalar Node 20 LTS.
 - Windows (usa PowerShell para la alarma local).
 
 ## Instalación
@@ -12,6 +12,8 @@ Migración del bot de `whatsapp-web.js` a **Baileys** (`@whiskeysockets/baileys`
 ```bash
 npm install
 ```
+
+> El repositorio incluye un `.npmrc` con `ignore-scripts=true`: evita que Baileys (que exige Node 20) falle durante la instalación cuando el Node global es 18. El binario local de Node se baja solo como parte del `npm install`.
 
 ## Variables de entorno
 
@@ -36,13 +38,18 @@ npm test           # chequeo de sintaxis + smoke test de la lógica
 
 La sesión se guarda en `auth_info/` (reemplaza a `.wwebjs_auth`). La primera vez hay que escanear el QR (también se guarda en `auth_info/qr.svg` y se envía por Telegram si está configurado).
 
-### PM2 (servidor)
+### PM2
 
 ```bash
-pm2 start index.js --name whatsapp-bot-baileys
-pm2 save
+pm2 start ecosystem.config.js     # usa el Node v20 local del proyecto (no el global)
+pm2 save                          # persiste la lista para restaurarla al encender la PC
 pm2 logs whatsapp-bot-baileys
+pm2 restart whatsapp-bot-baileys  # reiniciar
+pm2 delete whatsapp-bot-baileys   # detener y quitar
 ```
+
+- `ecosystem.config.js` apunta el intérprete al Node v20 instalado a nivel proyecto (`node_modules/node-win-x64/bin/node.exe`), así Baileys corre con Node 20 aunque el Node global sea 18. En servidores sin el binario local (ej. Linux) cae al `node` global; ahí instalar Node 20 LTS.
+- **Auto-inicio en Windows**: se usa `pm2-windows-startup` (`pm2 save` al final; al encender la PC se ejecuta `pm2 resurrect`). En servidores Linux: `pm2 startup` + `pm2 save`.
 
 ## Qué replica del bot original
 
