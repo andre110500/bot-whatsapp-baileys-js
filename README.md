@@ -32,7 +32,7 @@ npm install
 ## Uso
 
 ```bash
-npm start          # arranca el bot (muestra QR en consola)
+npm start          # reinicia el bot vía PM2 (NO arranca una segunda instancia)
 npm test           # chequeo de sintaxis + smoke test de la lógica
 ```
 

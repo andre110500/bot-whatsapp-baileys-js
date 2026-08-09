@@ -4,7 +4,7 @@
   "description": "Bot de WhatsApp migrado a Baileys (reemplazo de whatsapp-web.js)",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "pm2 restart whatsapp-bot-baileys || pm2 start ecosystem.config.js",
     "test": "node --check index.js && node test-smoke.js"
   },
   "keywords": [],
@@ -18,7 +18,7 @@
     "node-win-x64": "20.20.2"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.24",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "pino": "^9.6.0",
     "qrcode-terminal": "^0.12.0"
   }

@@ -101,13 +101,36 @@ function reproducirAlarma() {
 
 let startTime = clock.nowMs();
 
-// Marca temporal de cuando la conexión quedó abierta. El filtro de mensajes
-// viejos solo aplica durante el burst inicial de sincronización; los mensajes
-// en vivo jamás se descartan por timestamp (el reloj del remitente puede estar
-// desfasado varios minutos/horas y ese desfase no debe volver "viejos" a
-// mensajes recién recibidos).
-let connectionOpenedAt = 0;
-const SYNC_GRACE_MS = 10000;
+// Antigüedad máxima de un mensaje al llegar: por encima se considera reenvío
+// del server (sincronización al encender o drenaje de backlog de Baileys 7.x)
+// y NO debe disparar ninguna respuesta. Se compara contra la hora de llegada,
+// no contra startTime: el backlog peligroso llega con timestamp posterior al
+// arranque pero entregado ~15 minutos tarde. Configurable vía env.
+const OLD_MESSAGE_MAX_AGE_MS = (parseInt(process.env.OLD_MESSAGE_MAX_AGE_MINUTES, 10) || 10) * 60 * 1000;
+
+// Convierte messageTimestamp (número de segundos, string, Date o Long de
+// Baileys) a segundos. El Long { low, high, unsigned } rompe Number() -> NaN,
+// por lo que requiere conversión explícita.
+function getMessageTimestampSeconds(messageTimestamp) {
+    if (messageTimestamp == null) return NaN;
+    if (typeof messageTimestamp === 'number') return Number.isFinite(messageTimestamp) ? messageTimestamp : NaN;
+    if (typeof messageTimestamp === 'string') {
+        const n = Number(messageTimestamp);
+        return Number.isFinite(n) ? n : NaN;
+    }
+    if (messageTimestamp instanceof Date) return Math.floor(messageTimestamp.getTime() / 1000);
+    if (typeof messageTimestamp === 'object') {
+        if (typeof messageTimestamp.toNumber === 'function') {
+            return messageTimestamp.toNumber();
+        }
+        if (Number.isFinite(messageTimestamp.low)) {
+            const low = messageTimestamp.low >>> 0;
+            const high = Number(messageTimestamp.high) || 0;
+            return high * 4294967296 + low;
+        }
+    }
+    return NaN;
+}
 
 const serializeError = (error) => {
     if (!error) return { message: 'Unknown error' };
@@ -688,13 +711,14 @@ async function shouldIgnoreBasicMessage(message, reqId = null) {
         reasonsToIgnore.push('ignoredNumber');
     }
 
-    // Ignorar mensajes antiguos que llegan por sincronización al encender el bot,
-    // SOLO dentro del burst inicial de conexión (SYNC_GRACE_MS). Pasada esa
-    // ventana, ningún mensaje se descarta por su timestamp. En TEST_MODE no se
-    // aplica nunca: cualquier mensaje que se mande debe disparar la bienvenida.
-    const timestamp = Number(message.messageTimestamp);
-    const withinSyncBurst = connectionOpenedAt > 0 && (Date.now() - connectionOpenedAt) < SYNC_GRACE_MS;
-    if (!TEST_MODE && withinSyncBurst && Number.isFinite(timestamp) && timestamp > 0 && timestamp * 1000 < startTime) {
+    // Ignorar mensajes antiguos que llegan por sincronización o por reenvíos
+    // tardíos del server (Baileys 7.x drena el backlog como notify con
+    // timestamps viejos, incluso minutos después de enviados). Un mensaje solo
+    // se procesa si al llegar tiene menos de OLD_MESSAGE_MAX_AGE_MS de
+    // antigüedad. Aplica en todos los modos, incluido TEST_MODE: sin esto el
+    // bot responde a clientes por mensajes de hace 15 minutos.
+    const timestampSec = getMessageTimestampSeconds(message.messageTimestamp);
+    if (Number.isFinite(timestampSec) && timestampSec > 0 && clock.nowMs() - timestampSec * 1000 > OLD_MESSAGE_MAX_AGE_MS) {
         reasonsToIgnore.push('oldMessageSync');
     }
 
@@ -724,18 +748,13 @@ async function shouldIgnoreBasicMessage(message, reqId = null) {
     }
 
     if (reasonsToIgnore.length > 0) {
-        // En TEST_MODE no ensuciar el log con el filtro de mensajes viejos del sync
-        const silentOldSync = TEST_MODE && reasonsToIgnore.every(reason => reason === 'oldMessageSync');
-
-        if (!silentOldSync) {
-            const contactInfo = await getContactInfo(userId);
-            const summaryObj = getMessageSummary(message);
-            const summaryStr = `[${summaryObj.type.toUpperCase()}] ${summaryObj.shortBody}`;
-            if (TEST_MODE) {
-                log.debug('ignore_basic_message', { contactInfo, summary: summaryStr, reasons: reasonsToIgnore });
-            } else {
-                log.warn('ignore_basic_message', { contactInfo, summary: summaryStr, reasons: reasonsToIgnore });
-            }
+        const contactInfo = await getContactInfo(userId);
+        const summaryObj = getMessageSummary(message);
+        const summaryStr = `[${summaryObj.type.toUpperCase()}] ${summaryObj.shortBody}`;
+        if (TEST_MODE) {
+            log.debug('ignore_basic_message', { contactInfo, summary: summaryStr, reasons: reasonsToIgnore });
+        } else {
+            log.warn('ignore_basic_message', { contactInfo, summary: summaryStr, reasons: reasonsToIgnore });
         }
         return { ignore: true, chat };
     }
@@ -1015,14 +1034,14 @@ async function handleOutgoingMessage(message, upsertType, reqId = null) {
     if (chatId && OUTGOING_CONVERSATION_TYPES.has(getMessageType(message))) {
         // Al iniciar, Baileys puede entregar mensajes antiguos. Usamos su fecha
         // real para no convertirlos en una respuesta "recién enviada".
-        const messageTime = Number(message.messageTimestamp) * 1000;
+        const messageTime = getMessageTimestampSeconds(message.messageTimestamp) * 1000;
         const replyTime = Number.isFinite(messageTime) && messageTime > 0 ? messageTime : clock.nowMs();
         recordConversationReply(chatId, replyTime);
     }
 
     // No resucitar frases de despedida viejas que lleguen por sincronización
-    const timestamp = Number(message.messageTimestamp);
-    if (!Number.isFinite(timestamp) || timestamp * 1000 < startTime) return;
+    const timestampSec = getMessageTimestampSeconds(message.messageTimestamp);
+    if (!Number.isFinite(timestampSec) || clock.nowMs() - timestampSec * 1000 > OLD_MESSAGE_MAX_AGE_MS) return;
 
     // --- RESPUESTA AUTOMATICA DE DESPEDIDA ---
     if (/ah[ií]\s+(va( el deli)?|sali[oó]|sale)/i.test(bodyLower)) {
@@ -1155,7 +1174,6 @@ function handleConnectionUpdate(update) {
 
     if (connection === 'open') {
         reconnectAttempt = 0;
-        connectionOpenedAt = Date.now();
         logClient.info('connection_open', { user: sock && sock.user ? sock.user.id : null });
         handleReady();
         return;
