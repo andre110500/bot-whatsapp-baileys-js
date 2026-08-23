@@ -406,6 +406,7 @@ const WELCOME_IMAGE_ITEMS = [
 ];
 
 const welcomeMediaCache = new Map();
+const WELCOME_MEDIA_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
 
 // ---------------------------------------------------------------------------
 // Normalización de números / resolución de IDs de chat
@@ -651,14 +652,17 @@ async function loadWelcomeMedia(item, reqId = null, retries = 3) {
     const log = logWelcome.withReqId(reqId);
 
     const cachedMedia = welcomeMediaCache.get(item.url);
-    if (cachedMedia) {
+    if (cachedMedia && (Date.now() - cachedMedia.fetchedAt) < WELCOME_MEDIA_CACHE_TTL_MS) {
         return { buffer: cachedMedia.buffer, mimetype: cachedMedia.mimetype };
+    }
+    if (cachedMedia) {
+        welcomeMediaCache.delete(item.url);
     }
 
     for (let i = 0; i < retries; i++) {
         try {
             const { buffer, contentType } = await withTimeout(downloadBuffer(item.url), 30000, 'downloadImage');
-            welcomeMediaCache.set(item.url, { buffer, mimetype: contentType });
+            welcomeMediaCache.set(item.url, { buffer, mimetype: contentType, fetchedAt: Date.now() });
             return { buffer, mimetype: contentType };
         } catch (err) {
             log.warn('welcome_image_load_retry_error', {
