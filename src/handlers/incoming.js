@@ -73,7 +73,7 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
             if (now - lastNotice >= CLOSED_NOTICE_COOLDOWN_MS) {
                 lastClosedNoticeTime.set(userId, now);
                 const mins = minutesUntilOpen();
-                const text = `Hola! Estamos cerrados por hoy 😴\nAbrimos en ${formatDuration(mins)} (${clock.nowDate().toLocaleDateString()} ${clock.nowDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).\nPedinos cuando estemos de nuevo en https://latentacion.ar/catalogo/ 🌮`;
+                const text = `Hola! Estamos cerrados 😴\nAbrimos en ${formatDuration(mins)} (${clock.nowDate().toLocaleDateString()} ${clock.nowDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).\nPedinos cuando estemos de nuevo en https://latentacion.ar/catalogo/ 🌮`;
                 await withTimeout(state.sock.sendMessage(userId, { text }, { quoted: message }), 20000, 'sendClosedNotice');
                 logMessage.withReqId(logId).info('sent_closed_notice', {
                     contactInfo,
