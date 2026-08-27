@@ -291,6 +291,11 @@ const CONVERSATION_TIMEOUT = 4 * 60 * 60 * 1000; // 4 horas
 const lastAliasGivenTime = new Map();
 const lastFarewellGivenTime = new Map();
 
+// Cooldown para el aviso de "cerramos por hoy" (fuera de horario laboral),
+// para no spamNear al usuario que manda varios mensajes seguidos.
+const CLOSED_NOTICE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hora
+const lastClosedNoticeTime = new Map();
+
 // Última respuesta saliente por chat. Fuente alternativa para respetar la
 // ventana de cuatro horas. Se usan timestamps reales porque durante la
 // sincronización inicial Baileys puede entregar mensajes antiguos.
@@ -546,6 +551,27 @@ function isBusinessHours() {
     const isOpenFromYesterday = currentTimeMinutes < (yesterday.end - 24 * 60);
 
     return isOpenToday || isOpenFromYesterday;
+}
+
+// Cantidad de minutos restantes hasta que abra el negocio (se llama solo
+// cuando isBusinessHours() es false). La apertura siempre es today.start, ya
+// que cuando está cerrado nunca hay sesión abierta de ayer pasando de hora.
+function minutesUntilOpen() {
+    const now = clock.nowDate();
+    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+    const today = getScheduleForDate(now);
+    const until = today.start - currentTimeMinutes;
+    return until > 0 ? until : 0;
+}
+
+// Formatea una cantidad de minutos como "X h Y min" (legible en un mensaje).
+function formatDuration(totalMinutes) {
+    const total = Math.max(0, Math.round(totalMinutes));
+    const hours = Math.floor(total / 60);
+    const minutes = total % 60;
+    if (hours > 0 && minutes > 0) return `${hours} h ${minutes} min`;
+    if (hours > 0) return `${hours} h`;
+    return `${minutes} min`;
 }
 
 // ---------------------------------------------------------------------------
@@ -919,6 +945,25 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
     try {
         const body = getMessageBody(message);
         const bodyLower = body.toLowerCase();
+
+        // --- FUERA DE HORARIO: no se responde nada automaticamente, solo se
+        // avisa que cerramos y cuánto falta para abrir (también ante pedidos
+        // de la página "*Orden*", que llegan fuera de horario) ---
+        if (!isBusinessHours()) {
+            const now = clock.nowMs();
+            const lastNotice = lastClosedNoticeTime.get(userId) || 0;
+            if (now - lastNotice >= CLOSED_NOTICE_COOLDOWN_MS) {
+                lastClosedNoticeTime.set(userId, now);
+                const mins = minutesUntilOpen();
+                const text = `Hola! Estamos cerrados por hoy 😴\nAbrimos en ${formatDuration(mins)} (${clock.nowDate().toLocaleDateString()} ${clock.nowDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).\nPedinos cuando estemos de nuevo en https://latentacion.ar/catalogo/ 🌮`;
+                await withTimeout(sock.sendMessage(userId, { text }, { quoted: message }), 20000, 'sendClosedNotice');
+                logMessage.withReqId(logId).info('sent_closed_notice', {
+                    contactInfo,
+                    minutesUntilOpen: mins
+                });
+            }
+            return;
+        }
 
         // --- Ignorar a pedidos de la pagina (mensaje que empieza con "*Orden*") ---
         if (body.startsWith('*Orden*')) {
