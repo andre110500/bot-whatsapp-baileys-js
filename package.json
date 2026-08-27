@@ -14,9 +14,7 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "devDependencies": {
-    "node-win-x64": "20.20.2"
-  },
+  "devDependencies": {},
   "dependencies": {
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "pino": "^9.6.0",

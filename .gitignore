@@ -1,5 +1,6 @@
 node_modules/
 auth_info/
 auth_info_*.backup/
+auth_info.bak-*/
 runtime-data/
 logs/*.jsonl
