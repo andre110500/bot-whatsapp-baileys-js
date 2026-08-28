@@ -49,9 +49,10 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
 
     const userId = message.key.remoteJid;
     const contactInfo = await getContactInfo(userId);
+    const body = getMessageBody(message);
     const summaryObj = getMessageSummary(message);
     const summaryStr = `[${summaryObj.type.toUpperCase()}] ${summaryObj.shortBody}`;
-    logMessage.withReqId(logId).info('message_received', { userId, contactInfo, summary: summaryStr, summaryDetails: summaryObj });
+    logMessage.withReqId(logId).info('message_received', { userId, contactInfo, summary: summaryStr, summaryDetails: summaryObj, body });
 
     // BLOQUEO DE CONCURRENCIA PARA MENSAJES MULTIPLES SIMULTANEOS
     if (state.processingUsers.has(userId)) {
@@ -61,7 +62,6 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
     state.processingUsers.add(userId);
 
     try {
-        const body = getMessageBody(message);
         const bodyLower = body.toLowerCase();
 
         // --- FUERA DE HORARIO: no se responde nada automaticamente, solo se

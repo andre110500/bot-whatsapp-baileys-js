@@ -34,6 +34,7 @@ npm install
 ```bash
 npm start          # reinicia el bot vía PM2 (NO arranca una segunda instancia)
 npm test           # chequeo de sintaxis + smoke test de la lógica
+npm run logs:ui    # visor web de logs (http://127.0.0.1:9888)
 ```
 
 La sesión se guarda en `auth_info/` (reemplaza a `.wwebjs_auth`). La primera vez hay que escanear el QR (también se guarda en `auth_info/qr.svg` y se envía por Telegram si está configurado).
@@ -50,6 +51,19 @@ pm2 delete whatsapp-bot-baileys   # detener y quitar
 
 - `ecosystem.config.js` apunta el intérprete al Node v20 instalado a nivel proyecto (`node_modules/node-win-x64/bin/node.exe`), así Baileys corre con Node 20 aunque el Node global sea 18. En servidores sin el binario local (ej. Linux) cae al `node` global; ahí instalar Node 20 LTS.
 - **Auto-inicio en Windows**: se usa `pm2-windows-startup` (`pm2 save` al final; al encender la PC se ejecuta `pm2 resurrect`). En servidores Linux: `pm2 startup` + `pm2 save`.
+
+## Visor de logs (web)
+
+Interfaz web de solo lectura sobre los archivos `logs/bot-YYYY-MM-DD.jsonl` (JSON Lines que genera `logger.js`). Al estilo de un log explorer: filtros por fecha, rango horario, evento, módulo, nivel y búsqueda de texto, con presets rápidos (**Recibidos** = `message_received`, **Respuestas**, **Errores**), exportación CSV y auto-refresh. No agrega dependencias: usa el módulo `http` de Node (patrón API JSON + SPA vanilla).
+
+```bash
+npm run logs:ui    # arranca en http://127.0.0.1:9888 y abre el navegador
+```
+
+- Variable `LOGS_UI_HOST` / `LOGS_UI_PORT`: host y puerto. Por defecto solo escucha en `127.0.0.1`.
+- Para verlo desde el celular en la misma red: `LOGS_UI_HOST=0.0.0.0 npm run logs:ui` (expone números de WhatsApp, usarlo con cuidado).
+- Con PM2 queda levantado junto al bot: `pm2 start ecosystem.config.js` (app `whatsapp-bot-logs-ui`).
+- La hora de los logs es la hora local del bot (ej. `message_received` a las `00:00`).
 
 ## Qué replica del bot original
 
@@ -83,3 +97,4 @@ pm2 delete whatsapp-bot-baileys   # detener y quitar
 - `index.js` — bot principal (toda la lógica).
 - `logger.js`, `telegram.js`, `messages.js`, `holidays-2026.json`, `sonido.mp3` — reutilizados del bot original.
 - `test-smoke.js` — smoke test de horarios, números y proto de mensajes.
+- `logs-viewer/` — visor web de logs (`server.js` + `index.html`), sin dependencias.

@@ -26,5 +26,20 @@ module.exports = {
       restart_delay: 3000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
+    {
+      name: 'whatsapp-bot-logs-ui',
+      script: path.join(__dirname, 'logs-viewer', 'server.js'),
+      cwd: __dirname,
+      interpreter: fs.existsSync(localNode) ? localNode : 'node',
+      exec_mode: 'fork',
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 3000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        LOGS_UI_HOST: process.env.LOGS_UI_HOST || '127.0.0.1',
+        LOGS_UI_PORT: process.env.LOGS_UI_PORT || '9888',
+      },
+    },
   ],
 };

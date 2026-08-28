@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor de logs — Bot WhatsApp</title>
+<style>
+  :root{
+    --bg:#f2f5f7; --card:#ffffff; --line:#e1e6eb; --text:#1c2733;
+    --muted:#6b7684; --accent:#128c4b; --accent-soft:#e6f4ec;
+    --mono:"Cascadia Code","Consolas","SFMono-Regular",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  header{background:linear-gradient(180deg,#e8f5ec,#f2f5f7);border-bottom:1px solid var(--line);
+    padding:14px 18px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;}
+  header h1{font-size:18px;margin:0;display:flex;align-items:center;gap:8px;}
+  header .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  .nav-date{display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap}
+  .nav-date input[type=date]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  main{max-width:1180px;margin:16px auto;padding:0 16px 32px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .filters .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;width:100%}
+  .field{display:flex;flex-direction:column;gap:3px}
+  .field>span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  select,input[type=time],input[type=search]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
+  select[multiple] option{padding:2px 6px}
+  button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;
+    cursor:pointer;color:var(--text);transition:background .12s,border-color .12s}
+  button:hover{background:#f0f3f6}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#0f7340}
+  .preset.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .chip{padding:6px 10px;font-size:12px;border-radius:999px;background:#f0f3f6;border:1px solid var(--line);cursor:pointer}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .sep{width:100%;height:1px;background:var(--line);margin:2px 0}
+  .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:8px;color:var(--muted);font-size:13px}
+  .toolbar .count{font-weight:600;color:var(--text)}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;min-width:820px}
+  thead th{position:sticky;top:0;background:#f8fafb;text-align:left;font-size:11px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--muted);padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  tbody td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+  tbody tr:hover{background:#f7faf8}
+  tbody tr.open{background:var(--accent-soft)}
+  .time{font-family:var(--mono);font-size:12px}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .lvl-DEBUG{background:#eef1f4;color:#5c6b7a}
+  .lvl-INFO{background:#e7f0fb;color:#0b5cad}
+  .lvl-WARN{background:#fdf3d8;color:#9a6a00}
+  .lvl-ERROR{background:#fdecea;color:#b3261e}
+  .evt{font-family:var(--mono);font-size:12px}
+  .contact{font-weight:600}
+  .summary{white-space:normal;min-width:220px;max-width:420px;color:#33404d}
+  .summary .tag{display:inline-block;font-size:10px;background:#eef1f4;color:var(--muted);
+    border-radius:4px;padding:1px 5px;margin-right:6px;text-transform:uppercase}
+  .toggle{color:var(--muted);font-size:12px;cursor:pointer}
+  tr.detail td{background:#10161f;padding:10px 12px}
+  tr.detail pre{margin:0;color:#d7e0e8;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+  .empty{padding:26px!important;text-align:center;color:var(--muted)}
+  .hint{font-size:12px;color:var(--muted);margin-top:10px}
+  input[type=checkbox]{accent-color:var(--accent)}
+  label.chk{display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer}
+  @media (max-width:760px){
+    header h1{font-size:16px}
+    .nav-date{margin-left:0}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot"></span>Visor de logs — Bot WhatsApp</h1>
+  <div class="nav-date">
+    <button id="prevBtn" title="Día anterior">◀</button>
+    <input type="date" id="dateInput">
+    <button id="nextBtn" title="Día siguiente">▶</button>
+    <button id="todayBtn">Hoy</button>
+  </div>
+</header>
+
+<main>
+  <section class="card filters">
+    <div class="row">
+      <div>Presets rápidos:</div>
+      <button class="preset" data-preset="recibidos">📥 Recibidos</button>
+      <button class="preset" data-preset="respuestas">📤 Respuestas</button>
+      <button class="preset" data-preset="errores">⚠️ Errores</button>
+      <button class="preset" data-preset="todo">🗂 Todo</button>
+    </div>
+    <div class="sep"></div>
+    <div class="row">
+      <div class="field"><span>Desde (HH:mm)</span>
+        <input type="time" id="fromTime"> <button class="chip" id="zeroChip" title="Poner desde 00:00">00:00</button>
+      </div>
+      <div class="field"><span>Hasta (HH:mm)</span><input type="time" id="toTime"></div>
+      <div class="field" style="flex:1;min-width:220px">
+        <span>Buscar texto</span>
+        <input type="search" id="searchInput" placeholder="contacto, resumen, evento, datos…">
+      </div>
+      <button id="applyBtn" class="primary">Aplicar</button>
+      <label class="chk"><input type="checkbox" id="autoChk"> Auto-refresh 10 s</label>
+    </div>
+    <div class="sep"></div>
+    <div class="row">
+      <div class="field"><span>Evento</span><select id="evSelect"></select></div>
+      <div class="field"><span>Módulo</span><select id="modSelect"></select></div>
+      <div class="field"><span>Nivel</span>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label class="chk"><input type="checkbox" class="lvl" value="DEBUG">DEBUG</label>
+          <label class="chk"><input type="checkbox" class="lvl" value="INFO">INFO</label>
+          <label class="chk"><input type="checkbox" class="lvl" value="WARN">WARN</label>
+          <label class="chk"><input type="checkbox" class="lvl" value="ERROR">ERROR</label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="toolbar">
+    <span class="count" id="countInfo">Cargando…</span>
+    <button id="exportBtn" disabled>⬇ Exportar CSV</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Hora</th><th>Nivel</th><th>Módulo</th><th>Evento</th><th>Contacto</th><th>Resumen</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <p class="hint">Los logs se generan en <code>logs/bot-YYYY-MM-DD.jsonl</code> (JSON Lines). Los mensajes
+  recibidos quedan registrados con el evento <code>message_received</code>. La hora del log es la hora local del bot.</p>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s);
+
+const state = {
+  dates: [],
+  date: "",
+  events: [],
+  mods: "",
+  levels: [],
+  from: "",
+  to: "",
+  search: "",
+  rows: [],
+  count: 0,
+  dayTotal: 0,
+  truncated: false,
+  facetsKey: "",
+  busy: false,
+  autoId: null
+};
+
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  return r.json();
+}
+
+function localToday() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+async function boot() {
+  let dates;
+  try {
+    dates = (await fetchJSON("/api/dates")).dates || [];
+  } catch (e) {
+    setCount("No se pudo conectar con el servidor.");
+    return;
+  }
+  state.dates = dates;
+  if (dates.length === 0) {
+    setCount("No hay archivos de log todavía (logs/*.jsonl).");
+    renderEmpty("Sin datos");
+    return;
+  }
+  if (!state.date) {
+    const today = localToday();
+    state.date = dates.some((d) => d.date === today) ? today : dates[dates.length - 1].date;
+  }
+  $("dateInput").value = state.date;
+  refreshNav();
+  await apply();
+}
+
+function refreshNav() {
+  const idx = state.dates.findIndex((d) => d.date === state.date);
+  $("prevBtn").disabled = idx <= 0;
+  $("nextBtn").disabled = idx < 0 || idx >= state.dates.length - 1;
+  $("dateInput").value = state.date;
+}
+
+function setCount(msg) {
+  $("countInfo").textContent = msg;
+}
+
+function setPreset(name) {
+  document.querySelectorAll(".preset").forEach((b) =>
+    b.classList.toggle("active", b.dataset.preset === name));
+  switch (name) {
+    case "recibidos": state.events = ["message_received"]; state.levels = []; break;
+    case "respuestas": state.events = ["sent_*", "welcome_*"]; state.levels = []; break;
+    case "errores": state.events = []; state.levels = ["ERROR"]; break;
+    default: state.events = []; state.levels = []; state.mods = "";
+  }
+  $("evSelect").value = "";
+  $("modSelect").value = state.mods;
+  syncLevelChk();
+}
+
+function syncLevelChk() {
+  document.querySelectorAll(".lvl").forEach((c) => { c.checked = state.levels.includes(c.value); });
+}
+
+function updateFacets() {
+  const key = state.facets ? JSON.stringify(state.facets) : "";
+  if (key === state.facetsKey) return;
+  state.facetsKey = key;
+
+  const ev = $("evSelect");
+  const prevEv = ev.value;
+  ev.innerHTML = "";
+  ev.appendChild(new Option("— Todos los eventos —", ""));
+  for (const f of (state.facets && state.facets.events) || []) {
+    ev.appendChild(new Option(`${f.name} (${f.count})`, f.name));
+  }
+  ev.value = (state.events.length === 1 && !state.events[0].endsWith("*")) ? state.events[0] : "";
+  if (!ev.value && prevEv && [...ev.options].some((o) => o.value === prevEv)) ev.value = prevEv;
+
+  const md = $("modSelect");
+  const prevMd = md.value;
+  md.innerHTML = "";
+  md.appendChild(new Option("— Todos los módulos —", ""));
+  for (const f of (state.facets && state.facets.mods) || []) {
+    md.appendChild(new Option(`${f.name} (${f.count})`, f.name));
+  }
+  md.value = state.mods;
+  if (!md.value && prevMd && [...md.options].some((o) => o.value === prevMd)) md.value = prevMd;
+}
+
+async function apply() {
+  if (state.busy) return;
+  state.busy = true;
+  try {
+    const q = new URLSearchParams();
+    q.set("date", state.date);
+    if (state.events.length) q.set("events", state.events.join(","));
+    if (state.levels.length) q.set("levels", state.levels.join(","));
+    if (state.mods) q.set("mods", state.mods);
+    if (state.from) q.set("from", state.from);
+    if (state.to) q.set("to", state.to);
+    if (state.search) q.set("search", state.search);
+
+    let res;
+    try {
+      res = await fetchJSON("/api/logs?" + q.toString());
+    } catch (e) {
+      setCount("Error de red al consultar los logs.");
+      return;
+    }
+
+    if (res.error) {
+      setCount("No hay log para esa fecha.");
+      renderEmpty("Sin datos");
+      return;
+    }
+
+    state.rows = res.rows;
+    state.count = res.count;
+    state.dayTotal = res.total;
+    state.truncated = res.truncated;
+    state.facets = res.facets;
+
+    updateFacets();
+    render();
+    const parts = [`${state.count} resultado${state.count === 1 ? "" : "s"}`];
+    if (state.truncated) parts.push("(límite mostrado)");
+    parts.push(`· registros del día: ${state.dayTotal}`);
+    if (state.from || state.to) {
+      parts.push(`· hora ${state.from || "00:00"}–${state.to || "23:59"}`);
+    }
+    setCount(parts.join(" "));
+    $("exportBtn").disabled = state.rows.length === 0;
+  } finally {
+    state.busy = false;
+  }
+}
+
+function render() {
+  const tbody = $("rows");
+  tbody.innerHTML = "";
+  if (state.rows.length === 0) {
+    renderEmpty("Sin resultados para los filtros elegidos.");
+    return;
+  }
+  state.rows.forEach((row, i) => {
+    const tr = document.createElement("tr");
+    tr.dataset.i = i;
+
+    const hm = typeof row.ts === "string" ? row.ts.slice(11, 19) : "—";
+    const tdT = document.createElement("td");
+    tdT.className = "time";
+    tdT.textContent = hm;
+    tdT.title = row.ts || "";
+    tr.appendChild(tdT);
+
+    const tdL = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "badge lvl-" + esc((row.level || "?").toUpperCase());
+    badge.textContent = row.level || "?";
+    tdL.appendChild(badge);
+    tr.appendChild(tdL);
+
+    const tdM = document.createElement("td");
+    tdM.className = "evt";
+    tdM.textContent = row.mod || "";
+    tr.appendChild(tdM);
+
+    const tdE = document.createElement("td");
+    const ev = document.createElement("code");
+    ev.className = "evt";
+    ev.textContent = row.event || "";
+    tdE.appendChild(ev);
+    tr.appendChild(tdE);
+
+    const tdC = document.createElement("td");
+    const contact = row.fields.contactInfo || row.fields.userId || "";
+    if (contact) {
+      const c = document.createElement("span");
+      c.className = "contact";
+      c.textContent = contact;
+      tdC.appendChild(c);
+    } else {
+      tdC.textContent = "—";
+    }
+    tr.appendChild(tdC);
+
+    const tdS = document.createElement("td");
+    tdS.className = "summary";
+    const type = row.fields.summaryDetails && row.fields.summaryDetails.type;
+    const hasFull = typeof row.fields.body === "string" && row.fields.body.trim() !== "";
+    const text = hasFull ? row.fields.body : (row.fields.summary || row.fields.error || "");
+    if (type) {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = type;
+      tdS.appendChild(tag);
+    }
+    if (text) {
+      tdS.appendChild(document.createTextNode(text));
+    } else if (!type) {
+      tdS.textContent = "—";
+    }
+    tr.appendChild(tdS);
+
+    const tdX = document.createElement("td");
+    const tgl = document.createElement("span");
+    tgl.className = "toggle";
+    tgl.textContent = "＋";
+    tdX.appendChild(tgl);
+    tr.appendChild(tdX);
+
+    tbody.appendChild(tr);
+
+    const detail = document.createElement("tr");
+    detail.className = "detail";
+    detail.style.display = "none";
+    const dt = document.createElement("td");
+    dt.colSpan = 7;
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(row, null, 2);
+    dt.appendChild(pre);
+    detail.appendChild(dt);
+    tbody.appendChild(detail);
+
+    tr.addEventListener("click", () => {
+      const open = detail.style.display !== "none";
+      detail.style.display = open ? "none" : "table-row";
+      tr.classList.toggle("open", !open);
+      tgl.textContent = open ? "＋" : "－";
+    });
+  });
+}
+
+function renderEmpty(msg) {
+  const tbody = $("rows");
+  tbody.innerHTML = "";
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = 7;
+  td.className = "empty";
+  td.textContent = msg;
+  tr.appendChild(td);
+  tbody.appendChild(tr);
+  $("exportBtn").disabled = true;
+}
+
+function exportCSV() {
+  if (state.rows.length === 0) return;
+  const headers = ["hora", "nivel", "modulo", "evento", "contacto", "detalle"];
+  const lines = [headers.join(",")];
+  for (const row of state.rows) {
+    const fields = { ...row.fields };
+    const contact = fields.contactInfo || fields.userId || "";
+    delete fields.contactInfo; delete fields.userId;
+    const csv = (s) => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+    lines.push([
+      csv(row.ts || ""),
+      csv(row.level || ""),
+      csv(row.mod || ""),
+      csv(row.event || ""),
+      csv(contact),
+      csv(JSON.stringify(fields))
+    ].join(","));
+  }
+  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `logs-${state.date}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function moveDay(delta) {
+  const idx = state.dates.findIndex((d) => d.date === state.date);
+  const next = state.dates[idx + delta];
+  if (!next) return;
+  state.date = next.date;
+  $("dateInput").value = state.date;
+  refreshNav();
+  renderEmpty("Cargando…");
+  apply();
+}
+
+function bindUI() {
+  $("prevBtn").addEventListener("click", () => moveDay(-1));
+  $("nextBtn").addEventListener("click", () => moveDay(1));
+  $("todayBtn").addEventListener("click", () => {
+    const today = localToday();
+    if (!state.dates.some((d) => d.date === today)) { setCount("Todavía no hay log de hoy."); return; }
+    state.date = today;
+    $("dateInput").value = state.date;
+    refreshNav();
+    renderEmpty("Cargando…");
+    apply();
+  });
+  $("dateInput").addEventListener("change", (e) => {
+    if (!e.target.value) return;
+    state.date = e.target.value;
+    refreshNav();
+    renderEmpty("Cargando…");
+    apply();
+  });
+
+  document.querySelectorAll(".preset").forEach((b) =>
+    b.addEventListener("click", () => { setPreset(b.dataset.preset); apply(); }));
+  setPreset("recibidos");
+
+  $("fromTime").addEventListener("change", (e) => { state.from = e.target.value; apply(); });
+  $("toTime").addEventListener("change", (e) => { state.to = e.target.value; apply(); });
+  $("zeroChip").addEventListener("click", () => { state.from = "00:00"; $("fromTime").value = "00:00"; apply(); });
+  $("searchInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { state.search = e.target.value.trim(); apply(); }
+  });
+  $("applyBtn").addEventListener("click", () => { state.search = $("searchInput").value.trim(); apply(); });
+
+  $("evSelect").addEventListener("change", (e) => {
+    const v = e.target.value;
+    state.events = v ? [v] : [];
+    document.querySelectorAll(".preset").forEach((b) =>
+      b.classList.remove("active"));
+    apply();
+  });
+  $("modSelect").addEventListener("change", (e) => { state.mods = e.target.value; apply(); });
+  document.querySelectorAll(".lvl").forEach((c) => c.addEventListener("change", () => {
+    state.levels = [...document.querySelectorAll(".lvl")].filter((x) => x.checked).map((x) => x.value);
+    document.querySelectorAll(".preset").forEach((b) => b.classList.remove("active"));
+    apply();
+  }));
+
+  $("exportBtn").addEventListener("click", exportCSV);
+
+  $("autoChk").addEventListener("change", (e) => {
+    if (e.target.checked) {
+      state.autoId = setInterval(() => {
+        if (document.activeElement === $("searchInput") ||
+            document.activeElement === $("evSelect") ||
+            document.activeElement === $("modSelect")) return;
+        apply();
+      }, 10000);
+    } else {
+      clearInterval(state.autoId);
+      state.autoId = null;
+    }
+  });
+}
+
+bindUI();
+boot();
+</script>
+</body>
+</html>

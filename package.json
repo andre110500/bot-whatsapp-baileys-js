@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "pm2 restart whatsapp-bot-baileys || pm2 start ecosystem.config.js",
-    "test": "node --check index.js && node test-smoke.js"
+    "test": "node --check index.js && node test-smoke.js",
+    "logs:ui": "node logs-viewer/server.js"
   },
   "keywords": [],
   "author": "",
