@@ -4,7 +4,7 @@ const clock = require('../../clock');
 const logger = require('../../logger');
 const state = require('../../state');
 const { serializeError } = require('../utils/errors');
-const { delay, withTimeout } = require('../utils/promises');
+const { delay, withTimeout, sendWithDisconnectRetry } = require('../utils/promises');
 const { getMessageBody, getMessageSummary } = require('../utils/messages');
 const { getContactInfo } = require('../store');
 const { shouldIgnoreBasicMessage } = require('../filters');
@@ -110,7 +110,14 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
         if (await shouldIgnoreWelcomeMessage(userId, message, chat, logId)) return;
 
         await delay(10000);
-        await withTimeout(state.sock.sendMessage(userId, { text: WELCOME_MESSAGE }, { quoted: message }), 20000, 'sendWelcome');
+        // Si la conexión se cae mientras se envía el welcome (p.ej. durante la
+        // reconexión), se espera a que el socket vuelva a estar abierto y se
+        // reintenta en vez de perder el mensaje en silencio.
+        await sendWithDisconnectRetry(
+            () => state.sock.sendMessage(userId, { text: WELCOME_MESSAGE }, { quoted: message }),
+            'sendWelcome',
+            { userId, contactInfo }
+        );
         recordConversationReply(userId, clock.nowMs());
         const logWelcomeReq = logWelcome.withReqId(logId);
         logWelcomeReq.info('sent_welcome_message', { contactInfo });
