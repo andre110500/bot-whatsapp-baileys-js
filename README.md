@@ -75,6 +75,7 @@ npm run logs:ui    # arranca en http://127.0.0.1:9888 y abre el navegador
 - **Números ignorados**: `IGNORED_NUMBERS` no recibe respuestas.
 - **Alarma local**: suena `sonido.mp3` si pasan 4 minutos sin respuesta del dueño tras un welcome.
 - **Alertas Telegram**: aviso de logout y QR remoto (PNG), con throttle de 10 s.
+- **Sonido en el celular**: el bot corre como dispositivo *en segundo plano* (`markOnlineOnConnect: false` + presence `unavailable` al conectar). Si se marcase como sesión activa, WhatsApp silenciaría las notificaciones del teléfono (aparecen sin sonido).
 
 ## Diferencias técnicas respecto a whatsapp-web.js
 

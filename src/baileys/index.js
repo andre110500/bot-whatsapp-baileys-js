@@ -123,6 +123,16 @@ function handleConnectionUpdate(update) {
     if (connection === 'open') {
         state.reconnectAttempt = 0;
         logClient.info('connection_open', { user: state.sock && state.sock.user ? state.sock.user.id : null });
+
+        // Reforzar el modo "en segundo plano": Baileys marca 'available' al
+        // conectar salvo que lo evitemos; si el celular vuelve a quedar mudo,
+        // es esta presence la que lo reactiva.
+        try {
+            state.sock.sendPresenceUpdate('unavailable').catch(() => {});
+        } catch (err) {
+            logClient.debug('presence_unavailable_error', { error: err.message });
+        }
+
         handleReady();
         return;
     }
@@ -226,7 +236,11 @@ async function connect() {
             logger: pino({ level: BAILEYS_LOG_LEVEL }),
             printQRInTerminal: false,
             browser: ['Ubuntu', 'Chrome', '126.0.0.0'],
-            markOnlineOnConnect: true,
+            // IMPORTANTE: con true WhatsApp trata al bot como sesión activa y
+            // el celular deja de sonar las notificaciones (aparecen sin audio).
+            // En false el bot corre como dispositivo en segundo plano y el
+            // celular sigue avisando con sonido.
+            markOnlineOnConnect: false,
             syncFullHistory: false,
             generateHighQualityLinkPreview: false
         });
