@@ -9,7 +9,7 @@ const { getMessageBody, getMessageSummary } = require('../utils/messages');
 const { getContactInfo } = require('../store');
 const { shouldIgnoreBasicMessage } = require('../filters');
 const { reproducirAlarma } = require('../alarm');
-const { isBusinessHours, minutesUntilOpen, formatDuration } = require('../../config/schedule');
+const { isBusinessHours, minutesUntilOpen, getScheduleForDate } = require('../../config/schedule');
 const { WELCOME_MESSAGE } = require('../../config/messages');
 const {
     recordConversationReply,
@@ -73,7 +73,10 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
             if (now - lastNotice >= CLOSED_NOTICE_COOLDOWN_MS) {
                 lastClosedNoticeTime.set(userId, now);
                 const mins = minutesUntilOpen();
-                const text = `Hola! Estamos cerrados 😴\nAbrimos en ${formatDuration(mins)} (${clock.nowDate().toLocaleDateString()} ${clock.nowDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).\nPedinos cuando estemos de nuevo en https://latentacion.ar/catalogo/ 🌮`;
+                const openStart = getScheduleForDate(clock.nowDate()).start;
+                const openHour = String(Math.floor(openStart / 60)).padStart(2, '0');
+                const openMin = String(openStart % 60).padStart(2, '0');
+                const text = `Hola! Estamos cerrados 😴\nAbrimos a las ${openHour}:${openMin}.\nPedinos cuando estemos de nuevo en https://latentacion.ar/catalogo/ 🌮`;
                 await withTimeout(state.sock.sendMessage(userId, { text }, { quoted: message }), 20000, 'sendClosedNotice');
                 logMessage.withReqId(logId).info('sent_closed_notice', {
                     contactInfo,
@@ -99,6 +102,7 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
                 async () => {
                     await withTimeout(state.sock.sendMessage(userId, { text: 'latentacion.ar' }, { quoted: message }), 20000, 'sendAlias1');
                     await withTimeout(state.sock.sendMessage(userId, { text: 'a nombre de carito llerena' }), 20000, 'sendAlias2');
+                    await withTimeout(state.sock.sendMessage(userId, { text: 'Aviso: pagando por este medio se cobra un 5% extra 🙏' }), 20000, 'sendAlias3');
                 },
                 logId
             );
