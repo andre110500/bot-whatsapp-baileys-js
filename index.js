@@ -16,7 +16,7 @@ require('./config/env');
 
 const { boot } = require('./src/baileys');
 const { getScheduleForDate } = require('./config/schedule');
-const { isBusinessHours, formatDateKey, shiftDateByDays, isHoliday } = require('./config/schedule');
+const { isBusinessHours, formatDateKey, shiftDateByDays, isHoliday, revertOverrideIfMatches, computeOverrideExpiry } = require('./config/schedule');
 const { normalizeNumberVariants, normalizeAutoMuteChatId } = require('./config/contacts');
 const { getMessageBody, getMessageType } = require('./src/utils/messages');
 const { isGroupJid, isMutedChat, loadLastMessages, upsertMessagesCache } = require('./src/store');
@@ -50,6 +50,8 @@ if (require.main === module) {
         isHoliday,
         formatDateKey,
         shiftDateByDays,
+        revertOverrideIfMatches,
+        computeOverrideExpiry,
         normalizeNumberVariants,
         normalizeAutoMuteChatId,
         autoMuteContactMatches,

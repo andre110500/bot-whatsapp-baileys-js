@@ -97,6 +97,15 @@ function revertOverrideIfMatches() {
     const override = state.override;
     if (!override || override.mode === 'auto') return false;
 
+    // Expiración por sesión: si la sesión para la que se dio la orden ya
+    // terminó, el override muere aunque la PC haya estado apagada durante el
+    // momento exacto del cierre oficial (nadie observó el instante en que el
+    // horario normal alcanzó al estado forzado).
+    if (override.expiresAt && Date.now() > override.expiresAt) {
+        state.override = { mode: 'auto', updatedAt: Date.now(), source: 'auto-revert' };
+        return true;
+    }
+
     const now = clock.nowDate();
     const hour = now.getHours();
     const minutes = now.getMinutes();
@@ -113,6 +122,35 @@ function revertOverrideIfMatches() {
         return true;
     }
     return false;
+}
+
+// Calcula el momento (ms) en que expira un override dado en `date`:
+//   - si hay una sesión de ayer que sigue abierta cruzando la medianoche,
+//     expira al final de ESA sesión;
+//   - en cualquier otro caso expira al final del turno de hoy (ya sea que hoy
+//     ya abrió, o que vaya a abrir más tarde: la próxima sesión es siempre la
+//     de hoy).
+// Garantiza que una orden manual no pueda sobrevivir más allá del turno al que
+// pertenece, caiga o no la PC durante el cierre oficial.
+function computeOverrideExpiry(date = new Date()) {
+    const currentTimeMinutes = date.getHours() * 60 + date.getMinutes();
+    const today = getScheduleForDate(date);
+    const yesterday = getScheduleForDate(shiftDateByDays(date, -1));
+    const dayStart0 = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+    const endsAfterMidnight = yesterday.end - 24 * 60;
+
+    let endMs;
+    if (currentTimeMinutes < endsAfterMidnight) {
+        // turno de ayer que sigue despachando hoy de madrugada
+        endMs = dayStart0 + endsAfterMidnight * 60 * 1000;
+    } else {
+        // turno de hoy (hoy.end puede pasar de 24 h: 25:00 = 01:00 del día
+        // siguiente). Si el negocio está cerrado, la próxima sesión que abrirá
+        // es la de hoy, así que el override expira al cierre de ese turno.
+        endMs = dayStart0 + today.end * 60 * 1000;
+    }
+    return endMs;
 }
 
 // Cantidad de minutos restantes hasta que abra el negocio (se llama solo
@@ -145,6 +183,7 @@ module.exports = {
     isOverridden,
     isOpenEffectively,
     revertOverrideIfMatches,
+    computeOverrideExpiry,
     minutesUntilOpen,
     formatDuration
 };

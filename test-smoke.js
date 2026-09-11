@@ -88,4 +88,45 @@ check('loadLastMessages orden', () => {
     assert.strictEqual(last[0].key.id, '2');
 });
 
+// --- Expiración por sesión del override manual ---
+check('expiry cerrar temprano viernes', () => {
+    // Viernes 2026-02-27, 21:00 (sesión 20:00 → 01:00): expira sábado 01:00.
+    const expiry = m.computeOverrideExpiry(new Date(2026, 1, 27, 21, 0));
+    const d = new Date(expiry);
+    assert.strictEqual(d.getDate(), 28);
+    assert.strictEqual(d.getHours(), 1);
+    assert.strictEqual(d.getMinutes(), 0);
+});
+
+check('expiry abrir temprano dado cerrado', () => {
+    // Jueves 2026-02-26, 18:00 (cerrado, abre 20:00): expira al final de la
+    // próxima sesión (la de hoy) = viernes 00:30.
+    const expiry = m.computeOverrideExpiry(new Date(2026, 1, 26, 18, 0));
+    const d = new Date(expiry);
+    assert.strictEqual(d.getDate(), 27);
+    assert.strictEqual(d.getHours(), 0);
+    assert.strictEqual(d.getMinutes(), 30);
+});
+
+check('expiry domingo de madrugada', () => {
+    // Domingo 2026-03-01, 22:00 (sesión 13:00 → 00:30): expira lunes 00:30.
+    const expiry = m.computeOverrideExpiry(new Date(2026, 2, 1, 22, 0));
+    const d = new Date(expiry);
+    assert.strictEqual(d.getDate(), 2);
+    assert.strictEqual(d.getHours(), 0);
+    assert.strictEqual(d.getMinutes(), 30);
+});
+
+check('revert override expirado aunque el estado no coincida', () => {
+    const st = require('./state');
+    const prev = st.override;
+    st.override = { mode: 'open', updatedAt: Date.now(), expiresAt: Date.now() - 1, source: 'telegram' };
+    try {
+        assert.strictEqual(m.revertOverrideIfMatches(), true);
+        assert.strictEqual(st.override.mode, 'auto');
+    } finally {
+        st.override = prev;
+    }
+});
+
 console.log(`\n${passed} checks OK`);

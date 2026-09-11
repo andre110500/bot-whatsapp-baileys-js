@@ -109,7 +109,8 @@ El control **siempre** responde con el estado y los botones de acción, y solo l
 - Las órdenes de `abrir`/`cerrar`/`auto` **solo se aplican si el bot de WhatsApp está online** (heartbeat fresco). Si está apagado o caído, se responde **❌ No se pudo aplicar** y la orden **no queda en cola** (no se escribe nada en `override.json`).
 - Las órdenes que lleguen con mucha demora (más de 2 min de viejas al llegar al control, p.ej. un replay del polling tras un reinicio) se **descartan** para no aplicar órdenes viejas fuera de tiempo; el mensaje te invita a reenviarla.
 - Cuando se aplica, el control escribe el modo en `runtime-data/override.json`; el bot lo re-lee cada 30 s y aplica el cambio, y además guarda el estado persistido por si reinicia.
-- El override **sobrevive reinicios** del bot; se revierte solo a `auto` cuando el horario normal alcanza al estado forzado (ej.: abriste a las 18:00 → a la apertura normal siguiente vuelve solo a automático).
+- El override **sobrevive reinicios** del bot y se revierte solo a `auto` cuando el horario normal alcanza al estado forzado (ej.: abriste a las 18:00 → a la apertura normal siguiente vuelve solo a automático).
+- Cada orden manual lleva una **expiración por sesión**: muere al cierre oficial del turno al que pertenece (aunque la PC esté apagada durante ese cierre, al boot se revisa contra el vencimiento y se revierte sola). Ej.: "cerrar temprano" un viernes a las 21:00 expira sábado 01:00 aunque nunca se haya encendido la PC a esa hora. En `/estado` se muestra la hora de expiración.
 - Aunque la orden llega por Telegram, el `override.json` está en la PC del bot: si la PC está apagada, la orden no puede aplicarse.
 
 ### Qué NO pueden hacer

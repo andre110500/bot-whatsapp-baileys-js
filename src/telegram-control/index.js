@@ -18,7 +18,7 @@ const logger = require('../../logger');
 const clock = require('../../clock');
 const heartbeat = require('../heartbeat');
 const { readOverrideFile, writeOverrideFile } = require('./override');
-const { getScheduleForDate, isBusinessHours } = require('../../config/schedule');
+const { getScheduleForDate, isBusinessHours, computeOverrideExpiry } = require('../../config/schedule');
 
 const log = logger.child('telegram-control');
 
@@ -45,10 +45,15 @@ function menuButtons() {
 // ---------- override ----------
 
 function setOverride(mode) {
-    const override = { mode, updatedAt: Date.now(), source: 'telegram' };
+    // El override expira al final de la sesión de negocio en la que se dio la
+    // orden (o la próxima, si se da estando cerrado). Así, aunque la PC quede
+    // apagada, la orden no puede sobrevivir a su turno.
+    const override = mode === 'auto'
+        ? { mode, updatedAt: Date.now(), source: 'telegram' }
+        : { mode, updatedAt: Date.now(), expiresAt: computeOverrideExpiry(), source: 'telegram' };
     state.override = override;
     writeOverrideFile(override);
-    log.info('override_set', { mode });
+    log.info('override_set', { mode, expiresAt: override.expiresAt });
 }
 
 // Trae el archivo a memoria si cambió (el bot pudo revertir solo o el archivo
@@ -77,12 +82,23 @@ function formatSchedule() {
     return `Hoy: ${start} → ${end}`;
 }
 
+function formatExpiry(expiresAt) {
+    const d = new Date(expiresAt);
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const today = clock.nowDate();
+    const sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+    return sameDay ? time : `${time} (${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')})`;
+}
+
 function currentStateText() {
     refreshFromFile();
     const { isOverridden } = require('../../config/schedule');
     const mode = state.override.mode;
     const abierto = isBusinessHours();
     const modeLabel = mode === 'open' ? 'abierto manual' : mode === 'closed' ? 'cerrado manual' : 'automático';
+    const overrideNote = isOverridden()
+        ? `⏰ Override manual (expira ${state.override.expiresAt ? formatExpiry(state.override.expiresAt) : '—'})`
+        : '⏰ Siguiendo el horario normal';
 
     return [
         '📊 Estado del bot',
@@ -91,7 +107,7 @@ function currentStateText() {
         '',
         `Ahora: ${abierto ? '✅ ABIERTO' : '🔴 CERRADO'}`,
         `Modo: ${modeLabel}`,
-        isOverridden() ? '⏰ Respecto al horario: override manual' : '⏰ Siguiendo el horario normal',
+        overrideNote,
         '',
         `Bot de WhatsApp: ${botOnline() ? '✅ online' : '🔴 apagado o caído'}`
     ].join('\n');

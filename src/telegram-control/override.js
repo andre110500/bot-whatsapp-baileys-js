@@ -18,8 +18,17 @@ function readOverrideFile() {
     try {
         if (!fs.existsSync(OVERRIDE_FILE)) return null;
         const parsed = JSON.parse(fs.readFileSync(OVERRIDE_FILE, 'utf8'));
-        if (parsed && VALID_MODES.includes(parsed.mode)) return parsed;
-        return null;
+        if (!parsed || !VALID_MODES.includes(parsed.mode)) return null;
+
+        // Migración: los overrides viejos (sin expiresAt) se acotan a la sesión
+        // en la que se dieron, igual que los nuevos.
+        if (parsed.mode !== 'auto' && typeof parsed.expiresAt !== 'number') {
+            const { computeOverrideExpiry } = require('../../config/schedule');
+            const base = typeof parsed.updatedAt === 'number' ? new Date(parsed.updatedAt) : new Date();
+            parsed.expiresAt = computeOverrideExpiry(base);
+            log.info('override_expiry_backfilled', { mode: parsed.mode, expiresAt: parsed.expiresAt });
+        }
+        return parsed;
     } catch (error) {
         log.error('override_read_error', { error: error.message });
         return null;
