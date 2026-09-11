@@ -21,8 +21,9 @@ Se pueden definir en un archivo **`.env`** en la raíz del proyecto (copiá `.en
 
 | Variable | Descripción |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | Token del bot de BotFather para alertas de logout y QR. |
-| `TELEGRAM_CHAT_ID` | ID del chat/telegram donde se envían las alertas. |
+| `TELEGRAM_BOT_TOKEN` | Token del bot de BotFather. Necesario para alertas, el monitor de apagado y el control por Telegram. |
+| `TELEGRAM_CHAT_ID` | ID del chat de Telegram (tu chat personal). Es el único chat que recibe alertas y al que el control le obedece. |
+| `WELCOME_ALERT_TIMEOUT` | Segundos de espera de respuesta del dueño tras un welcome antes de disparar la alarma local + el aviso 🔔 por Telegram. Default `240` (4 min). |
 | `LOG_LEVEL` | `DEBUG` (default), `INFO`, `WARN`, `ERROR`. |
 | `BAILEYS_LOG_LEVEL` | Nivel del logger interno de Baileys. Default `silent` (usar `warn`/`error` para debuggear conexión). |
 | `TEST_MODE` | `1` = modo prueba de bienvenida: el bot responde la bienvenida en cualquier circunstancia (no bloquea por horario ni por la regla de las 4 horas). Ideal para probar fuera de horario de trabajo. |
@@ -52,7 +53,8 @@ pm2 delete whatsapp-bot-baileys   # detener y quitar
 ```
 
 - `ecosystem.config.js` apunta el intérprete al Node v20 instalado a nivel proyecto (`node_modules/node-win-x64/bin/node.exe`), así Baileys corre con Node 20 aunque el Node global sea 18. En servidores sin el binario local (ej. Linux) cae al `node` global; ahí instalar Node 20 LTS.
-- **Auto-inicio en Windows**: se usa `pm2-windows-startup` (`pm2 save` al final; al encender la PC se ejecuta `pm2 resurrect`). En servidores Linux: `pm2 startup` + `pm2 save`.
+- El archivo define **4 apps**: `whatsapp-bot-baileys` (bot), `whatsapp-bot-logs-ui` (visor web), `whatsapp-bot-apagado-monitor` (aviso de caída) y `whatsapp-bot-telegram-control` (control por Telegram, ver [Integración con Telegram](#integración-con-telegram-avisos--control)).
+- **Auto-inicio en Windows**: se usa `pm2-windows-startup` (`pm2 save` al final; al encender la PC se ejecuta `pm2 resurrect`). En servidores Linux: `pm2 startup` + `pm2 save`. Todo lo que esté en ese momento corriendo queda en el "dump" y se restaura al iniciar la sesión; si querés que el control y el monitor también autostarteen, deben estar corriendo al hacer `pm2 save`.
 
 ## Visor de logs (web)
 
@@ -67,6 +69,56 @@ npm run logs:ui    # arranca en http://127.0.0.1:9888 y abre el navegador
 - Con PM2 queda levantado junto al bot: `pm2 start ecosystem.config.js` (app `whatsapp-bot-logs-ui`).
 - La hora de los logs es la hora local del bot (ej. `message_received` a las `00:00`).
 
+## Integración con Telegram (avisos + control)
+
+El bot usa Telegram para **dos cosas**: avisarte cosas que pasan (notificaciones) y dejarte **darle órdenes** (control). Ambas corren, si así se configuró con `pm2 save`, como **procesos PM2 aparte del bot de WhatsApp**. Eso es a propósito: el control y el monitor quedan vivos aunque el bot de WhatsApp esté parado o caído, siempre que la PC siga encendida.
+
+### Los tres procesos
+
+| App (PM2) | Qué hace | Cuándo se inicia |
+|---|---|---|
+| `whatsapp-bot-baileys` | El bot de WhatsApp: conexión, welcome, horarios, respuestas. | Al prender la PC / iniciar sesión (via PM2) y con `pm2 start`. |
+| `whatsapp-bot-telegram-control` | Escucha tus comandos y botones de Telegram y escribe el override de horario en `runtime-data/override.json`. | Ídem. Arranque con `pm2 start ecosystem.config.js --only whatsapp-bot-telegram-control`. |
+| `whatsapp-bot-apagado-monitor` | Vigila el "heartbeat" (latido) del bot y te avisa por Telegram si se apaga o queda caído sin reiniciarse. | Ídem. Script `monitor.js`. |
+
+> Las tres se levantan juntas al iniciar la sesión gracias a `pm2 save` + `pm2-windows-startup` (ver [PM2](#pm2)). La app de logs (`whatsapp-bot-logs-ui`) es opcional y no se requirió para esto.
+
+### Notificaciones que te llegan al chat
+
+| Evento | Qué te dice |
+|---|---|
+| Bot iniciado | ✅ *Bot de WhatsApp iniciado*. |
+| Bot apagado **en reinicio** | ⏹️ aviso con contexto (lo manda el propio bot antes de caer; ej. tras `pm2 restart`). |
+| Bot caído / parado | ⏹️ aviso de que no responde; lo manda el **monitor** (si el bot sale de forma limpia con `pm2 stop`, el monitor detecta que se apagó y no hay vuelta). |
+| Pérdida de sesión / QR | ⚠️ aviso de logout + QR en imagen para re-vincular (throttle de 10 s). |
+| Cliente sin respuesta | 🔔 aviso si enviaste un welcome y nadie te respondió en `WELCOME_ALERT_TIMEOUT` segundos (además suena `sonido.mp3`). |
+
+### Órdenes que podés darle (desde tu chat)
+
+| Comando / botón | Efecto |
+|---|---|
+| `/abrir` · 🔓 Abrir ahora | Fuerza el negocio **ABIERTO** aunque no sea horario comercial. |
+| `/cerrar` · 🔒 Cerrar ahora | Fuerza **CERRADO** (mensajes reciben "Estamos cerrados…") aunque sea horario. |
+| `/auto` · 🔄 Automático | Vuelve al horario normal automático. |
+| `/estado` · 📊 Ver estado | Muestra el horario de hoy, si está abierto/cerrado, el modo actual y si el bot de WhatsApp está online/caído. |
+
+El control **siempre** responde con el estado y los botones de acción, y solo le obedece a tu chat (`TELEGRAM_CHAT_ID`). El botón "Abrir ahora" solo se muestra si el estado está cerrado, y "Cerrar ahora" solo si está abierto (evita ofrecer una acción que ya no cambia nada).
+
+### Cómo se conectan control ↔ bot
+
+- Las órdenes de `abrir`/`cerrar`/`auto` **solo se aplican si el bot de WhatsApp está online** (heartbeat fresco). Si está apagado o caído, se responde **❌ No se pudo aplicar** y la orden **no queda en cola** (no se escribe nada en `override.json`).
+- Las órdenes que lleguen con mucha demora (más de 2 min de viejas al llegar al control, p.ej. un replay del polling tras un reinicio) se **descartan** para no aplicar órdenes viejas fuera de tiempo; el mensaje te invita a reenviarla.
+- Cuando se aplica, el control escribe el modo en `runtime-data/override.json`; el bot lo re-lee cada 30 s y aplica el cambio, y además guarda el estado persistido por si reinicia.
+- El override **sobrevive reinicios** del bot; se revierte solo a `auto` cuando el horario normal alcanza al estado forzado (ej.: abriste a las 18:00 → a la apertura normal siguiente vuelve solo a automático).
+- Aunque la orden llega por Telegram, el `override.json` está en la PC del bot: si la PC está apagada, la orden no puede aplicarse.
+
+### Qué NO pueden hacer
+
+- **No encienden la PC** y **no dejan órdenes en cola**. Si la PC está encendida pero el bot de WhatsApp está caído, el control te responde al instante **❌ No se pudo aplicar** (la orden no queda pendiente para más tarde). Si la PC está totalmente apagada nadie responde y la orden simplemente caduca (no se aplica cuando la PC vuelva).
+- **No controlan WhatsApp en sí**: no mandan mensajes, no ven conversaciones ni leen el chat. Solo cambian el modo de horario del bot y te informan su estado.
+- **No responden a otras personas**: los comandos de otro chat se ignoran, solo responden tu `TELEGRAM_CHAT_ID`.
+- Dependen de que la **PC esté encendida y en sesión** (el auto-inicio corre al iniciar la sesión de Windows; ver [PM2](#pm2)).
+
 ## Qué replica del bot original
 
 - **Bienvenida**: mensaje de texto + 5 imágenes de menú (con caché de descarga), solo en horario comercial y solo si no hubo respuesta propia en las últimas **4 horas** (regla persistida en `runtime-data/conversation-replies.json`).
@@ -75,8 +127,8 @@ npm run logs:ui    # arranca en http://127.0.0.1:9888 y abre el navegador
 - **Horarios con feriados**: `holidays-2026.json`, turnos que cruzan la medianoche (ej. viernes hasta la 01:00).
 - **Auto-mute**: silencia `AUTO_MUTE_CONTACTS` durante el horario comercial y los desmutea fuera (sync cada 60 s con reintento a los 60 s ante errores).
 - **Números ignorados**: `IGNORED_NUMBERS` no recibe respuestas.
-- **Alarma local**: suena `sonido.mp3` si pasan 4 minutos sin respuesta del dueño tras un welcome.
-- **Alertas Telegram**: aviso de logout y QR remoto (PNG), con throttle de 10 s.
+- **Alarma local**: suena `sonido.mp3` si pasan `WELCOME_ALERT_TIMEOUT` segundos (default 4 min) sin respuesta del dueño tras un welcome, y además envía el aviso 🔔 por Telegram.
+- **Alertas Telegram**: aviso de logout y QR remoto (PNG), de iniciado/caído (via monitor), y el control por comandos — todo detallado en [Integración con Telegram](#integración-con-telegram-avisos--control).
 - **Sonido en el celular**: el bot corre como dispositivo *en segundo plano* (`markOnlineOnConnect: false` + presence `unavailable` al conectar). Si se marcase como sesión activa, WhatsApp silenciaría las notificaciones del teléfono (aparecen sin sonido).
 
 ## Diferencias técnicas respecto a whatsapp-web.js
@@ -101,3 +153,6 @@ npm run logs:ui    # arranca en http://127.0.0.1:9888 y abre el navegador
 - `logger.js`, `telegram.js`, `messages.js`, `holidays-2026.json`, `sonido.mp3` — reutilizados del bot original.
 - `test-smoke.js` — smoke test de horarios, números y proto de mensajes.
 - `logs-viewer/` — visor web de logs (`server.js` + `index.html`), sin dependencias.
+- `monitor.js` — app `whatsapp-bot-apagado-monitor`: vigila `runtime-data/.alive` (heartbeat) y avisa por Telegram si el bot queda caído.
+- `src/heartbeat.js` — heartbeat del bot: escribe `.alive` cada 10 s y soporta apagado limpio (`markCleanStop`).
+- `src/telegram-control/` — control por Telegram: `index.js` (polling + órdenes + botones), `run.js` (entrada de la app PM2), `override.js` (leer/escribir `runtime-data/override.json`), `sync.js` (el bot lo sincroniza cada 30 s).

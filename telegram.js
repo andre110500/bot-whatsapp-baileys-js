@@ -19,6 +19,45 @@ function isConfigured() {
 
 // ------------------ HTTP (Bot API) ------------------
 
+// GET genérico (para getUpdates, que no lleva body).
+function apiGet(path) {
+    return new Promise((resolve, reject) => {
+        const url = `https://api.telegram.org/bot${BOT_TOKEN}/${path}`;
+        const req = https.get(url, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json && json.ok) {
+                        resolve(json.result);
+                    } else {
+                        reject(new Error(`Telegram API: ${(json && json.description) || data.slice(0, 200)}`));
+                    }
+                } catch (err) {
+                    reject(new Error(`Respuesta inválida de Telegram: ${data.slice(0, 200)}`));
+                }
+            });
+        });
+        req.on('error', reject);
+    });
+}
+
+// Long-polling: trae los updates pendientes (mensajes y callback_query).
+function getUpdates(offset, timeoutSeconds = 50) {
+    return apiGet(`getUpdates?timeout=${timeoutSeconds}&offset=${offset}`);
+}
+
+// Responde al "click" en un botón inline (cierra el spinner del botón).
+function answerCallbackQuery(callbackQueryId, text) {
+    const body = JSON.stringify({ callback_query_id: callbackQueryId, text });
+    return apiRequest('answerCallbackQuery', body, 'application/json');
+}
+
+function getOwnerChatId() {
+    return CHAT_ID;
+}
+
 function apiRequest(method, bodyBuf, contentType) {
     return new Promise((resolve, reject) => {
         const url = `https://api.telegram.org/bot${BOT_TOKEN}/${method}`;
@@ -52,6 +91,16 @@ function apiRequest(method, bodyBuf, contentType) {
 
 function sendMessage(text) {
     const body = JSON.stringify({ chat_id: CHAT_ID, text });
+    return apiRequest('sendMessage', body, 'application/json');
+}
+
+// Mensaje con botones inline (controles del bot de WhatsApp).
+function sendCommandMenu(text, buttons) {
+    const body = JSON.stringify({
+        chat_id: CHAT_ID,
+        text,
+        reply_markup: { inline_keyboard: buttons }
+    });
     return apiRequest('sendMessage', body, 'application/json');
 }
 
@@ -226,6 +275,11 @@ async function notifyQr(qr) {
 
 module.exports = {
     isConfigured,
+    getOwnerChatId,
+    getUpdates,
+    answerCallbackQuery,
+    sendMessage,
+    sendCommandMenu,
     notifyStartup,
     notifyShutdown,
     notifyClientWithoutResponse,

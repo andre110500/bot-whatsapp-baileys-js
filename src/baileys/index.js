@@ -16,6 +16,7 @@ const { lastConversationReplyTime, removeConversationReply } = require('../conve
 const { resolveMuteChatIds, syncAutoMutedContacts, startAutoMuteContactsSync } = require('../auto-mute');
 const { handleIncomingMessage } = require('../handlers/incoming');
 const { handleOutgoingMessage } = require('../handlers/outgoing');
+const { startOverrideSync } = require('../telegram-control/sync');
 
 const logClient = logger.child('client');
 const logMessage = logger.child('message');
@@ -320,6 +321,17 @@ async function boot() {
     } catch (error) {
         logClient.warn('baileys_version_error', { error: error.message });
         state.baileysVersion = [2, 3000, 1017054665];
+    }
+
+    // El control por Telegram (/abrir, /cerrar, /auto, /estado) corre en un
+    // proceso PM2 aparte (whatsapp-bot-telegram-control) que escribe el
+    // override en runtime-data/override.json. Acá solo lo sincronizamos cada
+    // 30s para que el bot tome las órdenes (y revierta solo cuando el horario
+    // alcanza al estado forzado).
+    try {
+        startOverrideSync();
+    } catch (error) {
+        logClient.warn('override_sync_start_error', { error: error.message });
     }
 
     logClient.info('bot_starting');

@@ -9,6 +9,7 @@
 const clock = require('../clock');
 const holidays = require('../holidays-2026.json');
 const { isTestMode } = require('./index');
+const state = require('../state');
 
 // Días considerados fin de semana (para decidir horario en feriados).
 function isWeekendDay(dayNumber) {
@@ -58,6 +59,11 @@ function getScheduleForDate(date) {
 function isBusinessHours() {
     if (isTestMode()) return true;
 
+    // Override manual (Telegram): fuerza abierto o cerrado.
+    const override = state.override;
+    if (override && override.mode === 'open') return true;
+    if (override && override.mode === 'closed') return false;
+
     const now = clock.nowDate();
     const hour = now.getHours();
     const minutes = now.getMinutes();
@@ -70,6 +76,43 @@ function isBusinessHours() {
     const isOpenFromYesterday = currentTimeMinutes < (yesterday.end - 24 * 60);
 
     return isOpenToday || isOpenFromYesterday;
+}
+
+// true si hay un override manual activo (abierto o cerrado), sin importar cuál.
+function isOverridden() {
+    const override = state.override;
+    return Boolean(override && override.mode !== 'auto');
+}
+
+// Estado efectivo considerando el horario normal Y el override:
+//   'open' | 'closed'
+function isOpenEffectively() {
+    return isBusinessHours();
+}
+
+// Si el override manual ya coincide con el horario normal (p.ej. forzaste
+// "abrir" y ya llegó la hora normal de abrir), se revierte solo a 'auto'.
+// El módulo de control por Telegram es el encargado de persistir el cambio.
+function revertOverrideIfMatches() {
+    const override = state.override;
+    if (!override || override.mode === 'auto') return false;
+
+    const now = clock.nowDate();
+    const hour = now.getHours();
+    const minutes = now.getMinutes();
+    const currentTimeMinutes = hour * 60 + minutes;
+    const today = getScheduleForDate(now);
+    const yesterday = getScheduleForDate(shiftDateByDays(now, -1));
+    const isOpenToday = currentTimeMinutes >= today.start;
+    const isOpenFromYesterday = currentTimeMinutes < (yesterday.end - 24 * 60);
+    const scheduledOpen = isOpenToday || isOpenFromYesterday;
+
+    const overrideOpen = override.mode === 'open';
+    if (overrideOpen === scheduledOpen) {
+        state.override = { mode: 'auto', updatedAt: Date.now(), source: 'auto-revert' };
+        return true;
+    }
+    return false;
 }
 
 // Cantidad de minutos restantes hasta que abra el negocio (se llama solo
@@ -99,6 +142,9 @@ module.exports = {
     isHoliday,
     getScheduleForDate,
     isBusinessHours,
+    isOverridden,
+    isOpenEffectively,
+    revertOverrideIfMatches,
     minutesUntilOpen,
     formatDuration
 };

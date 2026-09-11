@@ -21,6 +21,13 @@ const state = {
     // timer de alerta) de un eco del propio bot (no debe cancelarlo).
     botSentMessageIds: new Map(),
 
+    // Override manual de horario controlado por Telegram:
+    //   { mode: 'auto' | 'open' | 'closed', updatedAt, source }
+    // 'open' fuerza abierto (isBusinessHours => true), 'closed' fuerza
+    // cerrado (=> false). Se revierte a 'auto' cuando el horario normal
+    // iguala al estado forzado.
+    override: { mode: 'auto', updatedAt: 0, source: null },
+
     // Alarma local
     alarmaSonando: false,
 

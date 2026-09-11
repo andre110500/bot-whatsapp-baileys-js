@@ -55,5 +55,16 @@ module.exports = {
       restart_delay: 3000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
+    {
+      name: 'whatsapp-bot-telegram-control',
+      script: path.join(__dirname, 'src', 'telegram-control', 'run.js'),
+      cwd: __dirname,
+      interpreter: fs.existsSync(localNode) ? localNode : 'node',
+      exec_mode: 'fork',
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 3000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
   ],
 };

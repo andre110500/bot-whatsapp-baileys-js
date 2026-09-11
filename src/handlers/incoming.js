@@ -10,7 +10,7 @@ const { getContactInfo } = require('../store');
 const { shouldIgnoreBasicMessage } = require('../filters');
 const { reproducirAlarma } = require('../alarm');
 const telegram = require('../../telegram');
-const { isBusinessHours, minutesUntilOpen, getScheduleForDate } = require('../../config/schedule');
+const { isBusinessHours, minutesUntilOpen, getScheduleForDate, isOverridden } = require('../../config/schedule');
 const { WELCOME_MESSAGE } = require('../../config/messages');
 const {
     recordConversationReply,
@@ -74,10 +74,16 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
             if (now - lastNotice >= CLOSED_NOTICE_COOLDOWN_MS) {
                 lastClosedNoticeTime.set(userId, now);
                 const mins = minutesUntilOpen();
-                const openStart = getScheduleForDate(clock.nowDate()).start;
-                const openHour = String(Math.floor(openStart / 60)).padStart(2, '0');
-                const openMin = String(openStart % 60).padStart(2, '0');
-                const text = `Hola! Estamos cerrados 😴\nAbrimos a las ${openHour}:${openMin}.\nPedinos cuando estemos de nuevo en https://latentacion.ar/catalogo/ 🌮`;
+                let text;
+                if (isOverridden()) {
+                    // Cierre manual por Telegram: no inventamos una hora de reapertura.
+                    text = `Hola! Estamos cerrados por hoy 😴\nPedinos cuando estemos de nuevo en https://latentacion.ar/catalogo/ 🌮`;
+                } else {
+                    const openStart = getScheduleForDate(clock.nowDate()).start;
+                    const openHour = String(Math.floor(openStart / 60)).padStart(2, '0');
+                    const openMin = String(openStart % 60).padStart(2, '0');
+                    text = `Hola! Estamos cerrados 😴\nAbrimos a las ${openHour}:${openMin}.\nPedinos cuando estemos de nuevo en https://latentacion.ar/catalogo/ 🌮`;
+                }
                 await withTimeout(state.sock.sendMessage(userId, { text }, { quoted: message }), 20000, 'sendClosedNotice');
                 logMessage.withReqId(logId).info('sent_closed_notice', {
                     contactInfo,
