@@ -182,6 +182,20 @@ async function notifyShutdown(context) {
     }
 }
 
+// Alerta de cliente sin respuesta: el welcome ya se envió pero el dueño no
+// respondió dentro del tiempo límite. Acompaña a la alarma local (sonido).
+async function notifyClientWithoutResponse(userId, contactInfo) {
+    if (!isConfigured()) return;
+    const date = new Date().toLocaleString('es-AR');
+    const text = `🔔 Cliente sin responder\n\nHora: ${date}\nContacto: ${contactInfo || 'desconocido'}\nChat: ${userId}\n\nEl welcome ya se envió y no recibiste respuesta.`;
+    try {
+        await sendMessage(text);
+        log.warn('telegram_no_response_sent', { userId });
+    } catch (error) {
+        log.error('telegram_no_response_error', { userId, error: error.message });
+    }
+}
+
 // Avisa por Telegram que la sesión se deslogueó.
 async function notifyLogout(reason) {
     if (!isConfigured()) return;
@@ -214,6 +228,7 @@ module.exports = {
     isConfigured,
     notifyStartup,
     notifyShutdown,
+    notifyClientWithoutResponse,
     notifyLogout,
     notifyQr
 };

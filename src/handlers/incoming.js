@@ -9,6 +9,7 @@ const { getMessageBody, getMessageSummary } = require('../utils/messages');
 const { getContactInfo } = require('../store');
 const { shouldIgnoreBasicMessage } = require('../filters');
 const { reproducirAlarma } = require('../alarm');
+const telegram = require('../../telegram');
 const { isBusinessHours, minutesUntilOpen, getScheduleForDate } = require('../../config/schedule');
 const { WELCOME_MESSAGE } = require('../../config/messages');
 const {
@@ -181,6 +182,9 @@ async function handleIncomingMessage(message, upsertType, reqId = null) {
             logWelcomeReq.warn('welcome_no_response_alert', { contactInfo: alertContactInfo, userId });
 
             reproducirAlarma();
+            // Además del sonido local, avisa por Telegram para que se vea
+            // aunque nadie esté en la PC.
+            telegram.notifyClientWithoutResponse(userId, alertContactInfo);
             state.welcomeTimers.delete(userId);
         }, WELCOME_ALERT_TIMEOUT);
 
