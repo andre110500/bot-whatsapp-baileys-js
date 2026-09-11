@@ -3,7 +3,7 @@
 const state = require('../../state');
 const logger = require('../../logger');
 const { isBusinessHours } = require('../../config/schedule');
-const { isTestMode } = require('../../config/index');
+const { isTestMode, welcomeAlertTimeoutMs } = require('../../config/index');
 const { CONVERSATION_TIMEOUT, lastConversationReplyTime } = require('../conversation');
 const { loadLastMessages, getContactInfo } = require('../store');
 const { getMessageSummary } = require('../utils/messages');
@@ -13,7 +13,8 @@ const { serializeError } = require('../utils/errors');
 
 const logWelcome = logger.child('welcome');
 
-const WELCOME_ALERT_TIMEOUT = 4 * 60 * 1000;
+// Timeout de la alarma local "cliente sin respuesta" (configurable por env).
+const WELCOME_ALERT_TIMEOUT = welcomeAlertTimeoutMs();
 const CHAT_IMAGE_PTT_STICKER = ['chat', 'image', 'ptt', 'sticker'];
 
 const WELCOME_IMAGE_ITEMS = [

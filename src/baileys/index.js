@@ -259,6 +259,24 @@ async function connect() {
             generateHighQualityLinkPreview: false
         });
 
+        // Registra cada mensaje que envía el propio bot para poder distinguir,
+        // en el handler de salientes, un eco propio de una respuesta del dueño
+        // (que es la que cancela el timer de alerta).
+        const originalSendMessage = state.sock.sendMessage.bind(state.sock);
+        state.sock.sendMessage = async (jid, content, opts) => {
+            const sent = await originalSendMessage(jid, content, opts);
+            if (sent && sent.id) {
+                state.botSentMessageIds.set(sent.id, Date.now());
+                if (state.botSentMessageIds.size > 1000) {
+                    const now = Date.now();
+                    for (const [id, ts] of state.botSentMessageIds) {
+                        if (now - ts > 5 * 60 * 1000) state.botSentMessageIds.delete(id);
+                    }
+                }
+            }
+            return sent;
+        };
+
         bindSocketEvents(saveCreds);
     } catch (err) {
         logClient.error('connect_error', { error: err.message });

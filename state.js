@@ -16,6 +16,11 @@ const state = {
     processingUsers: new Set(),
     welcomeTimers: new Map(),
 
+    // Ids de mensajes que envió el propio bot (con timestamp). Sirve para que
+    // el handler de salientes distinga una respuesta del dueño (cancela el
+    // timer de alerta) de un eco del propio bot (no debe cancelarlo).
+    botSentMessageIds: new Map(),
+
     // Alarma local
     alarmaSonando: false,
 

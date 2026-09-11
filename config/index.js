@@ -23,10 +23,19 @@ function isDisableOldMessageSync() {
 const AUTH_DIR = path.join(__dirname, '..', 'auth_info');
 const BAILEYS_LOG_LEVEL = process.env.BAILEYS_LOG_LEVEL || 'silent';
 
+// Timeout de la alarma "cliente sin respuesta": segundos vía WELCOME_ALERT_TIMEOUT
+// (default 240 = 4 minutos).
+function welcomeAlertTimeoutMs() {
+    const value = Number(process.env.WELCOME_ALERT_TIMEOUT);
+    if (Number.isFinite(value) && value > 0) return value * 1000;
+    return 4 * 60 * 1000;
+}
+
 module.exports = {
     isTestMode,
     isDisableAutoMute,
     isDisableOldMessageSync,
     AUTH_DIR,
-    BAILEYS_LOG_LEVEL
+    BAILEYS_LOG_LEVEL,
+    welcomeAlertTimeoutMs
 };

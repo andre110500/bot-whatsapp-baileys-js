@@ -49,8 +49,11 @@ async function handleOutgoingMessage(message, upsertType, reqId = null) {
         );
     }
 
-    // Si hay un timer de alerta pendiente, el dueño ya respondió a tiempo
-    if (state.welcomeTimers.has(chatId)) {
+    // Si hay un timer de alerta pendiente y este mensaje es una respuesta REAL
+    // del dueño (no un eco del propio bot, p.ej. el welcome que acaba de
+    // enviar), el dueño respondió a tiempo y se cancela el timer.
+    const isBotEcho = !!message.key && !!message.key.id && state.botSentMessageIds.has(message.key.id);
+    if (!isBotEcho && state.welcomeTimers.has(chatId)) {
         clearTimeout(state.welcomeTimers.get(chatId));
         state.welcomeTimers.delete(chatId);
         const contactInfo = await getContactInfo(chatId);
