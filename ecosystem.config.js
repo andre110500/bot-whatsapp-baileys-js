@@ -24,6 +24,9 @@ module.exports = {
       autorestart: true,
       max_restarts: 10,
       restart_delay: 3000,
+      // Da hasta 10s para que el aviso de apagado salga por Telegram antes
+      // de que PM2 lo mate con SIGKILL (default 1.6s, muy corto).
+      kill_timeout: 10000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
@@ -40,6 +43,17 @@ module.exports = {
         LOGS_UI_HOST: process.env.LOGS_UI_HOST || '127.0.0.1',
         LOGS_UI_PORT: process.env.LOGS_UI_PORT || '9888',
       },
+    },
+    {
+      name: 'whatsapp-bot-apagado-monitor',
+      script: path.join(__dirname, 'monitor.js'),
+      cwd: __dirname,
+      interpreter: fs.existsSync(localNode) ? localNode : 'node',
+      exec_mode: 'fork',
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 3000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
   ],
 };

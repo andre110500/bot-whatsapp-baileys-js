@@ -17,6 +17,8 @@ npm install
 
 ## Variables de entorno
 
+Se pueden definir en un archivo **`.env`** en la raíz del proyecto (copiá `.env.example` y completá; `.env` está en `.gitignore`, no se sube al repo) o como variables del entorno/PM2. Si existen en ambos lados, gana la del entorno real. Se cargan al arrancar desde `config/env.js` (sin dependencias).
+
 | Variable | Descripción |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Token del bot de BotFather para alertas de logout y QR. |

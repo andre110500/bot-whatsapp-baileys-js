@@ -10,6 +10,10 @@
 // - No trae makeInMemoryStore: se usa un mini-store propio (src/store).
 // - La autenticación es por Multi-File (carpeta auth_info) en vez de Chromium.
 
+// Carga las variables de entorno desde .env (si existe) ANTES de requerir
+// cualquier módulo que las lea en tiempo de carga (telegram, config, etc.).
+require('./config/env');
+
 const { boot } = require('./src/baileys');
 const { getScheduleForDate } = require('./config/schedule');
 const { isBusinessHours, formatDateKey, shiftDateByDays, isHoliday } = require('./config/schedule');
@@ -19,8 +23,24 @@ const { isGroupJid, isMutedChat, loadLastMessages, upsertMessagesCache } = requi
 const { autoMuteContactMatches } = require('./src/auto-mute');
 
 if (require.main === module) {
+    const telegram = require('./telegram');
+    const logClient = require('./logger').child('client');
+
+    // Cierre ordenado (funciona en Linux, donde PM2 entrega señales). En
+    // Windows PM2 mata con taskkill sin señal: eso lo cubre el heartbeat +
+    // monitor.js. Al marcar el cierre como limpio evitamos que la próxima
+    // instancia repita el aviso de "apagado".
+    function handleShutdown(signal) {
+        logClient.warn('shutdown_signal', { signal });
+        const { markCleanStop } = require('./src/heartbeat');
+        markCleanStop();
+        telegram.notifyShutdown().finally(() => process.exit(0));
+    }
+    process.on('SIGINT', () => handleShutdown('SIGINT'));
+    process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+
     boot().catch(err => {
-        require('./logger').child('client').error('initialization_error', { error: err.message });
+        logClient.error('initialization_error', { error: err.message });
         process.exit(1);
     });
 } else {

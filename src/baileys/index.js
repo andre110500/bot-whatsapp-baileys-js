@@ -8,6 +8,7 @@ const clock = require('../../clock');
 const logger = require('../../logger');
 const telegram = require('../../telegram');
 const state = require('../../state');
+const heartbeat = require('../heartbeat');
 const { withTimeout } = require('../utils/promises');
 const { AUTH_DIR, BAILEYS_LOG_LEVEL, isDisableAutoMute, isDisableOldMessageSync, isTestMode } = require('../../config/index');
 const { upsertChat, upsertContacts, upsertMessagesCache, deleteChat } = require('../store');
@@ -19,6 +20,10 @@ const { handleOutgoingMessage } = require('../handlers/outgoing');
 const logClient = logger.child('client');
 const logMessage = logger.child('message');
 const logConversation = logger.child('conversation');
+
+// true si la instancia anterior estaba viva hace segundos (fue un reinicio).
+// Se calcula en boot() ANTES de escribir el heartbeat propio.
+let previousInstanceRunning = false;
 
 function handleQr(qr) {
     qrcode.generate(qr, { small: true });
@@ -62,6 +67,15 @@ function handleQr(qr) {
 function handleReady() {
     const totalTime = ((clock.nowMs() - state.startTime) / 1000).toFixed(1);
     logClient.info('client_ready', { totalTime: Number(totalTime) });
+
+    // Confirmación en Telegram de que el bot quedó operativo (y chequeo de
+    // token/chat). No bloquea el arranque si Telegram falla.
+    // Si la instancia anterior estaba viva hace un momento, fue un reinicio
+    // (en Windows PM2 mata sin señales): avisamos el apagado antes del arranque.
+    if (previousInstanceRunning) {
+        telegram.notifyShutdown('El bot se reinició.');
+    }
+    telegram.notifyStartup();
 
     if (!isDisableAutoMute()) {
         resolveMuteChatIds().then(() => startAutoMuteContactsSync());
@@ -275,6 +289,11 @@ async function boot() {
         clock.startAutoSync();
     }
     state.startTime = clock.nowMs();
+
+    // Cuenta si la instancia anterior estaba viva ANTES de pisar el archivo
+    // con el heartbeat propio, y después arranca la escritura periódica.
+    previousInstanceRunning = heartbeat.previousInstanceWasRunning();
+    heartbeat.startHeartbeat();
 
     try {
         const { version } = await withTimeout(state.B.fetchLatestBaileysVersion(), 20000, 'fetchLatestBaileysVersion');

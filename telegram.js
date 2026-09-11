@@ -150,6 +150,38 @@ function renderQrToPng(qr) {
 
 // ------------------ Notificaciones ------------------
 
+// Notificación de arranque: confirma en Telegram que el bot quedó corriendo.
+// También sirve para verificar que el token y el chat_id están bien.
+async function notifyStartup() {
+    if (!isConfigured()) return;
+    const date = new Date().toLocaleString('es-AR');
+    const text = `✅ Bot de WhatsApp iniciado\n\nHora: ${date}\nTodo listo. Vas a recibir acá el QR o los avisos de logout.`;
+    try {
+        await sendMessage(text);
+        log.info('telegram_startup_sent');
+    } catch (error) {
+        log.error('telegram_startup_error', { error: error.message });
+    }
+}
+
+// Notificación de apagado: avisa en Telegram que el bot dejó de responder.
+// context (opcional) agrega un detalle (ej. "El bot se reinició.").
+async function notifyShutdown(context) {
+    if (!isConfigured()) return;
+    const date = new Date().toLocaleString('es-AR');
+    const detail = context ? `\nDetalle: ${context}` : '';
+    const text = `⏹️ Bot de WhatsApp apagado\n\nHora: ${date}\nDejó de recibir mensajes.${detail}`;
+    try {
+        await Promise.race([
+            sendMessage(text),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout_telegram_shutdown')), 3000))
+        ]);
+        log.warn('telegram_shutdown_sent');
+    } catch (error) {
+        log.error('telegram_shutdown_error', { error: error.message });
+    }
+}
+
 // Avisa por Telegram que la sesión se deslogueó.
 async function notifyLogout(reason) {
     if (!isConfigured()) return;
@@ -180,6 +212,8 @@ async function notifyQr(qr) {
 
 module.exports = {
     isConfigured,
+    notifyStartup,
+    notifyShutdown,
     notifyLogout,
     notifyQr
 };
